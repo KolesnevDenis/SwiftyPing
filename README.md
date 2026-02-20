@@ -1,46 +1,160 @@
 # SwiftyPing
-ICMP ping client for Swift 5
 
-### SwiftyPing is an easy-to-use, one file ICMP ping client
-This project is based on SwiftPing: https://github.com/ankitthakur/SwiftPing.
+Modern ICMP ping client for Swift.
 
-### Usage
-```swift
+SwiftyPing provides low-level ICMP echo requests with a simple API and supports both callback-based and async/await-based usage.
 
-// Ping indefinitely
-let pinger = try? SwiftyPing(host: "1.1.1.1", configuration: PingConfiguration(interval: 0.5, with: 5), queue: DispatchQueue.global())
-pinger?.observer = { (response) in
-    let duration = response.duration
-    print(duration)
-}
-try? pinger?.startPinging()
+## Requirements
 
-// Ping once
-let once = try? SwiftyPing(host: "1.1.1.1", configuration: PingConfiguration(interval: 0.5, with: 5), queue: DispatchQueue.global())
-once?.observer = { (response) in
-    let duration = response.duration
-    print(duration)
-}
-once?.targetCount = 1
-try? once?.startPinging()
+- iOS 15.0+
+- macOS 12.0+
+- Swift 5.10+
+- Swift Package Manager
 
-```
-### Installation
-Just drop the SwiftyPing.swift file to your project.  Using SwiftyPing for a Mac application requires allowing Network->Incoming Connections and Network->Outgoing Connections in the application sandbox.
+## Installation
 
-You can also use Swift Package Manager:
+### Swift Package Manager
 
 ```swift
-.Package(url: "https://github.com/samiyr/SwiftyPing.git", branch: "master")
+.package(url: "https://github.com/KolesnevDenis/SwiftyPing", from: "2.0.0")
 ```
 
-### Future development and contributions
-I made this project based on what I need, so I probably won't be adding any features unless I really need them. I will maintain it (meaning bug fixes and support for new Swift versions) for some time at least. However, you can submit a pull request and I'll take a look. Please try to keep the overall coding style.
+Then add `SwiftyPing` to your target dependencies.
 
-### Caveats
-This is low-level code, basically C code translated to Swift. This means that there are unsafe casts from raw bytes to Swift structs, for which Swift's usual type safety checks no longer apply. These can fail ungracefully (throwing an exception), and may even be used as an exploit (I'm not a security researcher and thus don't have the expertise to say for sure), so use with caution, especially if pinging untrusted hosts.
+## Quick Start
 
-Also, while I think that the API is now stable, I don't make any guarantees – some new version might break old stuff.
+### Continuous ping (callbacks)
 
-### License
-Use pretty much however you want. Officially licensed under MIT.
+```swift
+import SwiftyPing
+
+let config = PingConfiguration(interval: 0.5, with: 2)
+let pinger = try SwiftyPing(host: "1.1.1.1", configuration: config, queue: .global())
+
+pinger.observer = { response in
+    print("seq=\(response.trueSequenceNumber) time=\(response.duration)")
+}
+
+pinger.finished = { result in
+    print("transmitted=\(result.packetsTransmitted) received=\(result.packetsReceived)")
+}
+
+try pinger.startPinging()
+```
+
+### Ping once
+
+```swift
+import SwiftyPing
+
+let config = PingConfiguration(interval: 1, with: 2)
+let pinger = try SwiftyPing(host: "1.1.1.1", configuration: config, queue: .global())
+
+pinger.targetCount = 1
+pinger.observer = { response in
+    print(response.duration)
+}
+
+try pinger.startPinging()
+```
+
+## Async/Await API
+
+SwiftyPing now includes async methods equivalent to `observer` and `finished`.
+
+### Receive responses as an async stream
+
+```swift
+import SwiftyPing
+
+let config = PingConfiguration(interval: 0.5, with: 2)
+let pinger = try SwiftyPing(host: "1.1.1.1", configuration: config, queue: .global())
+pinger.targetCount = 5
+
+Task {
+    for await response in pinger.responseStream() {
+        print("stream seq=\(response.trueSequenceNumber) time=\(response.duration)")
+    }
+}
+
+try pinger.startPinging()
+```
+
+### Await final ping result
+
+```swift
+import SwiftyPing
+
+let config = PingConfiguration(interval: 0.5, with: 2)
+let pinger = try SwiftyPing(host: "1.1.1.1", configuration: config, queue: .global())
+pinger.targetCount = 5
+
+try pinger.startPinging()
+let result = await pinger.waitForFinishedResult()
+
+print("packetLoss=\(String(describing: result.packetLoss))")
+```
+
+### Full async example
+
+```swift
+import SwiftyPing
+
+let config = PingConfiguration(interval: 0.5, with: 2)
+let pinger = try SwiftyPing(host: "1.1.1.1", configuration: config, queue: .global())
+pinger.targetCount = 10
+
+let streamTask = Task {
+    for await response in pinger.responseStream() {
+        print("reply #\(response.trueSequenceNumber): \(response.duration)s")
+    }
+}
+
+try pinger.startPinging()
+let result = await pinger.waitForFinishedResult()
+
+streamTask.cancel()
+print("done: tx=\(result.packetsTransmitted), rx=\(result.packetsReceived)")
+```
+
+## Parallel usage
+
+Each `SwiftyPing` instance has isolated internal state, so multiple instances can run concurrently (for example with `withTaskGroup`) without interfering with each other.
+
+Important: parallel execution is supported only across different `SwiftyPing` instances. If `startPinging` is called simultaneously on the same instance, behavior remains one active ping session per instance.
+
+```swift
+import SwiftyPing
+
+let hosts = ["1.1.1.1", "8.8.8.8", "9.9.9.9"]
+
+await withTaskGroup(of: Void.self) { group in
+    for host in hosts {
+        group.addTask {
+            do {
+                let pinger = try SwiftyPing(
+                    host: host,
+                    configuration: PingConfiguration(interval: 0.5, with: 2),
+                    queue: .global()
+                )
+                pinger.targetCount = 3
+                try pinger.startPinging()
+                let result = await pinger.waitForFinishedResult()
+                print("\(host): tx=\(result.packetsTransmitted), rx=\(result.packetsReceived)")
+            } catch {
+                print("\(host): \(error)")
+            }
+        }
+    }
+}
+```
+
+## Notes
+
+- Callback API (`observer`, `finished`, `delegate`) remains available.
+- Async API is additive and can be used together with callbacks.
+- The library is updated to a modern Swift style with Swift concurrency support and stricter sendability checks.
+
+## License
+
+MIT
