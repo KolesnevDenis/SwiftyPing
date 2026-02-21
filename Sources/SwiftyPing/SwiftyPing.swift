@@ -238,6 +238,14 @@ public class SwiftyPing: NSObject, @unchecked Sendable {
         }
 #endif
     }
+    /// Initializes a pinger.
+    /// - Parameter destination: Specifies the host.
+    /// - Parameter interval: The time between consecutive pings in seconds. Defaults to 1.
+    /// - Parameter timeout: Timeout interval in seconds. Defaults to 5.
+    /// - Parameter queue: All responses are delivered through this dispatch queue.
+    public convenience init(destination: Destination, interval: TimeInterval = 1, timeout: TimeInterval = 5, queue: DispatchQueue) throws {
+        try self.init(destination: destination, configuration: .init(interval: interval, with: timeout), queue: queue)
+    }
 
 #if os(iOS)
     /// Notification tokens for app state observers.
