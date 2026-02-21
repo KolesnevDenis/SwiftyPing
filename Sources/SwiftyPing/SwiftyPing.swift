@@ -238,14 +238,6 @@ public class SwiftyPing: NSObject, @unchecked Sendable {
         }
 #endif
     }
-    /// Initializes a pinger.
-    /// - Parameter destination: Specifies the host.
-    /// - Parameter interval: The time between consecutive pings in seconds. Defaults to 1.
-    /// - Parameter timeout: Timeout interval in seconds. Defaults to 5.
-    /// - Parameter queue: All responses are delivered through this dispatch queue.
-    public convenience init(destination: Destination, interval: TimeInterval = 1, timeout: TimeInterval = 5, queue: DispatchQueue) throws {
-        try self.init(destination: destination, configuration: .init(interval: interval, with: timeout), queue: queue)
-    }
 
 #if os(iOS)
     /// Notification tokens for app state observers.
@@ -320,6 +312,31 @@ public class SwiftyPing: NSObject, @unchecked Sendable {
         let result = try Destination.getIPv4AddressFromHost(host: host)
         let destination = Destination(host: host, ipv4Address: result)
         try self.init(destination: destination, configuration: configuration, queue: queue)
+    }
+    /// Initializes a pinger from a given host string.
+    /// - Parameter host: A string describing the host. This can be an IP address or host name.
+    /// - Parameter interval: The time between consecutive pings in seconds. Defaults to 1.
+    /// - Parameter timeout: Timeout interval in seconds. Defaults to 5.
+    /// - Parameter targetCount: The number of pings to make. Default is `nil`, which means no limit.
+    /// - Parameter queue: All responses are delivered through this dispatch queue.
+    /// - Throws: A `PingError` if the given host could not be resolved.
+    public convenience init(host: String, interval: TimeInterval = 1, timeout: TimeInterval = 5, targetCount: Int? = nil, queue: DispatchQueue) throws {
+        let result = try Destination.getIPv4AddressFromHost(host: host)
+        let destination = Destination(host: host, ipv4Address: result)
+        let configuration = PingConfiguration(interval: interval, with: timeout)
+        try self.init(destination: destination, configuration: configuration, queue: queue)
+        self.targetCount = targetCount
+    }
+    /// Initializes a pinger from a given destination.
+    /// - Parameter destination: Specifies the host.
+    /// - Parameter interval: The time between consecutive pings in seconds. Defaults to 1.
+    /// - Parameter timeout: Timeout interval in seconds. Defaults to 5.
+    /// - Parameter targetCount: The number of pings to make. Default is `nil`, which means no limit.
+    /// - Parameter queue: All responses are delivered through this dispatch queue.
+    public convenience init(destination: Destination, interval: TimeInterval = 1, timeout: TimeInterval = 5, targetCount: Int? = nil, queue: DispatchQueue) throws {
+        let configuration = PingConfiguration(interval: interval, with: timeout)
+        try self.init(destination: destination, configuration: configuration, queue: queue)
+        self.targetCount = targetCount
     }
 
     /// Initializes a CFSocket.
