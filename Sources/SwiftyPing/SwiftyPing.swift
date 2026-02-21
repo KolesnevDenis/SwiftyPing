@@ -142,6 +142,12 @@ public class SwiftyPing: NSObject, @unchecked Sendable {
             return returnData
         }
 
+        /// Resolves the `host`.
+        public static func getIPv4AddressFromHost(_ host: String) throws -> String? {
+            let ipv4Address: Data = try getIPv4AddressFromHost(host: host)
+            let destination = Destination(host: host, ipv4Address: ipv4Address)
+            return destination.ip
+        }
     }
     // MARK: - Initialization
     /// Ping host
